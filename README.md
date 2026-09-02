@@ -83,8 +83,8 @@ Isi `.env.local`:
 | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Project Settings → API | |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API | |
-| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API | 🔒 **rahasia, jangan di-commit** |
-| `GEMINI_API_KEY` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | 🔒 rahasia, hanya dibaca server |
+| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API | 🔒 **tidak di-commit** |
+| `GEMINI_API_KEY` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | 🔒hanya dibaca server |
 | `GEMINI_MODEL` | opsional | default `gemini-flash-latest` |
 | `SEED_SECRET` | string bebas | mengunci endpoint seed |
 
