@@ -155,10 +155,11 @@ create table if not exists public.ai_analysis (
   id uuid primary key default gen_random_uuid(),
   lost_report_id uuid references public.lost_reports(id) on delete cascade,
   found_report_id uuid references public.found_reports(id) on delete cascade,
-  extraction jsonb,                -- structured attributes hasil Gemini / fallback
+  extraction jsonb,                -- structured attributes hasil AI (Ollama/Gemini) / fallback
   image_analysis jsonb,            -- hasil analisis foto (jika ada foto)
   embedding jsonb,                 -- vektor embedding (array float, dinormalisasi)
-  source text not null default 'fallback' check (source in ('gemini','fallback')),
+  embedding_model text,            -- model pembuat embedding (hanya dibandingkan dengan model sama)
+  source text not null default 'fallback' check (source in ('ollama','gemini','fallback')),
   status public.ai_status not null default 'PENDING',
   error text,
   created_at timestamptz not null default now(),
@@ -228,7 +229,7 @@ create table if not exists public.claim_verifications (
   answers jsonb not null default '{}'::jsonb,   -- jawaban claimant per pertanyaan
   checks jsonb not null default '[]'::jsonb,    -- hasil evaluasi per aspek (match/partial/no_match)
   score numeric(5,2),
-  evaluated_by text check (evaluated_by in ('gemini','fallback')),
+  evaluated_by text check (evaluated_by in ('ollama','gemini','fallback')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -1,5 +1,5 @@
 // TEMUIN MATCHING ENGINE
-// Skor akhir dihitung deterministik di backend — Gemini hanya menyuplai
+// Skor akhir dihitung deterministik di backend — AI (Ollama/Gemini) hanya menyuplai
 // sinyal (extraction, embedding, image analysis), BUKAN keputusan match.
 
 import type {
@@ -22,6 +22,7 @@ import {
   textSimilarity,
 } from "@/lib/utils";
 import { translateTokens } from "@/lib/ai/fallback";
+import { calibrateCosine, embeddingModelOf } from "@/lib/ai/embedding";
 
 /** Bobot dasar. Komponen yang datanya tidak tersedia dikeluarkan dan
  *  bobot sisanya dinormalisasi ulang agar total tetap 100%. */
@@ -55,6 +56,7 @@ interface Side {
   extraction: Extraction | null;
   image: ImageAnalysis | null;
   embedding: number[] | null;
+  embeddingModel: string;
 }
 
 function toSide(
@@ -66,6 +68,7 @@ function toSide(
     extraction: analysis?.extraction ?? null,
     image: analysis?.image_analysis ?? null,
     embedding: analysis?.embedding ?? null,
+    embeddingModel: embeddingModelOf(analysis?.embedding_model),
   };
 }
 
@@ -158,13 +161,15 @@ function scoreCategory(lost: Side, found: Side): MatchComponent {
 }
 
 function scoreSemantic(lost: Side, found: Side): MatchComponent {
+  // Embedding dari model berbeda tidak sebanding → pakai fallback teks.
   if (
     lost.embedding &&
     found.embedding &&
+    lost.embeddingModel === found.embeddingModel &&
     lost.embedding.length === found.embedding.length
   ) {
     const cos = cosineSimilarity(lost.embedding, found.embedding);
-    const mapped = clamp01((cos - 0.55) / 0.37);
+    const mapped = calibrateCosine(cos, lost.embeddingModel);
     return {
       key: "semantic",
       label: "Kemiripan Deskripsi (AI)",

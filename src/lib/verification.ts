@@ -5,9 +5,9 @@
 import {
   judgeVerificationAnswers,
   type VerificationJudgeInput,
-} from "@/lib/ai/gemini";
+} from "@/lib/ai";
 import { translateTokens } from "@/lib/ai/fallback";
-import type { FoundReport, VerificationCheck } from "@/lib/types";
+import type { AiSource, FoundReport, VerificationCheck } from "@/lib/types";
 import { formatDate, formatTime, textSimilarity } from "@/lib/utils";
 
 export interface VerificationQuestion {
@@ -114,7 +114,7 @@ const VERDICT_VALUE: Record<VerificationCheck["verdict"], number> = {
 export interface VerificationEvaluation {
   checks: VerificationCheck[];
   score: number;
-  evaluatedBy: "gemini" | "fallback";
+  evaluatedBy: AiSource;
 }
 
 export async function evaluateVerificationAnswers(
@@ -129,8 +129,9 @@ export async function evaluateVerificationAnswers(
     reference: referenceFor(found, q.key),
   }));
 
-  const judged = await judgeVerificationAnswers(judgeInputs);
-  const evaluatedBy: "gemini" | "fallback" = judged ? "gemini" : "fallback";
+  const result = await judgeVerificationAnswers(judgeInputs);
+  const judged = result?.value ?? null;
+  const evaluatedBy: AiSource = result?.provider ?? "fallback";
 
   const checks: VerificationCheck[] = questions.map((q) => {
     const fromJudge = judged?.find((r) => r.key === q.key);

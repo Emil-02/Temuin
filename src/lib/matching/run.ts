@@ -6,7 +6,7 @@ import {
   analyzeItemImage,
   embedForMatching,
   extractReportAttributes,
-} from "@/lib/ai/gemini";
+} from "@/lib/ai";
 import { fallbackExtraction } from "@/lib/ai/fallback";
 import { computeMatch } from "./engine";
 import {
@@ -128,14 +128,13 @@ export async function processReportAI(
       location_name: report.location_name,
     };
 
-    const geminiExtraction = await extractReportAttributes(input);
-    const extraction = geminiExtraction ?? fallbackExtraction(input);
-    const usedGemini = Boolean(geminiExtraction);
+    const aiExtraction = await extractReportAttributes(input);
+    const extraction = aiExtraction?.value ?? fallbackExtraction(input);
 
     let imageAnalysis: ImageAnalysis | null = null;
     if (report.image_url) {
       const img = await downloadImageBase64(report.image_url);
-      if (img) imageAnalysis = await analyzeItemImage(img.base64, img.mimeType);
+      if (img) imageAnalysis = (await analyzeItemImage(img))?.value ?? null;
     }
 
     const embedding = await embedForMatching(
@@ -143,7 +142,7 @@ export async function processReportAI(
     );
 
     const fullyDone =
-      usedGemini &&
+      !!aiExtraction &&
       (!report.image_url || imageAnalysis !== null) &&
       !!embedding;
     const { error: saveError } = await db
@@ -151,14 +150,23 @@ export async function processReportAI(
       .update({
         extraction,
         image_analysis: imageAnalysis,
-        embedding,
-        source: usedGemini ? "gemini" : "fallback",
+        embedding: embedding?.vector ?? null,
+        embedding_model: embedding?.model ?? null,
+        source: aiExtraction?.provider ?? "fallback",
         status: fullyDone ? "COMPLETED" : "PARTIAL",
         error: null,
       })
       .eq("id", analysisId);
-    if (saveError)
-      console.error("[ai] gagal menyimpan hasil analysis:", saveError);
+    if (saveError) {
+      console.error(
+        "[ai] gagal menyimpan hasil analysis — pastikan migration supabase/migrations/0003_ollama_provider.sql sudah dijalankan:",
+        saveError,
+      );
+      await db
+        .from("ai_analysis")
+        .update({ status: "FAILED", error: "Gagal menyimpan hasil analisis" })
+        .eq("id", analysisId);
+    }
   } catch (err) {
     console.error("[ai] processReportAI gagal:", err);
     const input = {

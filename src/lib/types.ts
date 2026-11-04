@@ -23,6 +23,9 @@ export type MatchLevel = "LOW" | "POSSIBLE" | "GOOD" | "HIGH";
 
 export type AiStatus = "PENDING" | "COMPLETED" | "PARTIAL" | "FAILED";
 
+/** Asal hasil AI: provider LLM yang dipakai, atau heuristik lokal. */
+export type AiSource = "ollama" | "gemini" | "fallback";
+
 export interface Profile {
   id: string;
   full_name: string;
@@ -96,7 +99,9 @@ export interface AiAnalysis {
   extraction: Extraction | null;
   image_analysis: ImageAnalysis | null;
   embedding: number[] | null;
-  source: "gemini" | "fallback";
+  /** Model pembuat embedding; null = data lama (Gemini). */
+  embedding_model: string | null;
+  source: AiSource;
   status: AiStatus;
   error: string | null;
   created_at: string;
@@ -158,7 +163,7 @@ export interface ClaimVerification {
   answers: Record<string, string>;
   checks: VerificationCheck[];
   score: number | null;
-  evaluated_by: "gemini" | "fallback" | null;
+  evaluated_by: AiSource | null;
   created_at: string;
   updated_at: string;
 }

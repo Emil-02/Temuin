@@ -22,6 +22,7 @@ import {
   verificationRecommendation,
 } from "@/lib/verification";
 import type { ClaimStatus, VerificationCheck } from "@/lib/types";
+import { aiSourceLabel } from "@/lib/constants";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
   Badge,
@@ -214,9 +215,7 @@ export default async function ClaimDetailPage({
                 </h2>
                 <Badge className="bg-slate-100 text-slate-500 ring-slate-200">
                   dievaluasi{" "}
-                  {verification.evaluated_by === "gemini"
-                    ? "Gemini AI"
-                    : "heuristik"}
+                  {aiSourceLabel(verification.evaluated_by)}
                 </Badge>
               </div>
 
