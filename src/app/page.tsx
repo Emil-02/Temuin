@@ -87,7 +87,7 @@ const HOW_STEPS = [
   {
     icon: Bot,
     title: "AI Mencocokkan",
-    text: "Gemini mengekstrak ciri barang; Temuin Matching Engine menghitung skor dari 7 komponen.",
+    text: "AI (Gemma di server AI kampus) mengekstrak ciri barang; Temuin Matching Engine menghitung skor dari 7 komponen.",
   },
   {
     icon: ShieldCheck,

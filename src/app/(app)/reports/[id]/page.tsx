@@ -22,7 +22,11 @@ import {
   getStatusHistory,
 } from "@/lib/reports";
 import type { FoundReport, LostReport, Match, ReportType } from "@/lib/types";
-import { categoryLabel, MATCH_LEVEL_META } from "@/lib/constants";
+import {
+  aiSourceLabel,
+  categoryLabel,
+  MATCH_LEVEL_META,
+} from "@/lib/constants";
 import { cn, formatDate, formatTime } from "@/lib/utils";
 import {
   Badge,
@@ -351,9 +355,7 @@ export default async function ReportDetailPage({
                         : "Sebagian (fallback)"}
                   </Badge>
                   <Badge className="bg-slate-100 text-slate-500 ring-slate-200">
-                    {analysis.source === "gemini"
-                      ? "Gemini AI"
-                      : "Heuristik lokal"}
+                    {aiSourceLabel(analysis.source)}
                   </Badge>
                 </div>
 

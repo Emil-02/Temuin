@@ -33,7 +33,7 @@ flowchart LR
 
         subgraph Domain["Domain Services — src/lib/"]
             Engine["Matching Engine<br/>(deterministik dan explainable)"]
-            AILayer["AI Layer<br/>gemini.ts + fallback.ts"]
+            AILayer["AI Layer<br/>ai/index.ts (ollama.ts → gemini.ts → fallback.ts)"]
             Verify["Ownership Verification"]
         end
     end
@@ -44,7 +44,8 @@ flowchart LR
         Store["Storage privat<br/>bucket report-images"]
     end
 
-    Gemini["✨ Gemini API<br/>flash + gemini-embedding-001"]
+    Ollama["🎓 Ollama server AI kampus<br/>gemma4 (teks + vision) + bge-m3 (embedding)"]
+    Gemini["✨ Gemini API (cadangan)<br/>flash + gemini-embedding-001"]
 
     UI --> Proxy
     Proxy --> Pages
@@ -56,7 +57,8 @@ flowchart LR
     Actions -- "login/logout<br/>(anon key + cookie)" --> Auth
     Domain -- "service role" --> DB
     Domain -- "service role" --> Store
-    AILayer -- "server-side only" --> Gemini
+    AILayer -- "server-side only (utama)" --> Ollama
+    AILayer -. "cadangan bila Ollama gagal" .-> Gemini
 ```
 
 **Prinsip desain utama:**
@@ -64,7 +66,7 @@ flowchart LR
 | Prinsip | Implementasi |
 | --- | --- |
 | Zero-trust ke browser | RLS **deny-all** di semua tabel; data hanya lewat backend (service role) dengan ownership check per-request |
-| AI sebagai sinyal, bukan hakim | Gemini hanya menyuplai ekstraksi/embedding/analisis foto; skor akhir dihitung **deterministik** oleh Matching Engine |
+| AI sebagai sinyal, bukan hakim | AI (Ollama/Gemini) hanya menyuplai isi otomatis form, ekstraksi/embedding/analisis foto; skor akhir dihitung **deterministik** oleh Matching Engine |
 | Non-blocking UX | Laporan tersimpan instan; AI & matching jalan di background via `after()` |
 | Selalu berfungsi | Setiap fungsi AI punya fallback heuristik lokal (termasuk kamus ID→EN) |
 | Explainable | Skor match disimpan per-komponen (`explanation` JSONB) dan ditampilkan ke user |
@@ -104,7 +106,10 @@ src/
     │   │                     #   handover, complete
     │   └── profile.ts        #   update profil, ganti password
     ├── ai/
-    │   ├── gemini.ts         # Integrasi Gemini (4 fungsi, server-only)
+    │   ├── index.ts          # Layanan AI: prompt + schema + rantai provider
+    │   ├── ollama.ts         # Klien Ollama (provider utama, server-only)
+    │   ├── gemini.ts         # Klien Gemini (provider cadangan, server-only)
+    │   ├── embedding.ts      # Kalibrasi cosine per model embedding
     │   └── fallback.ts       # Heuristik non-AI + kamus token ID→EN
     ├── matching/
     │   ├── engine.ts         # computeMatch() — skor deterministik 7 komponen
@@ -177,14 +182,19 @@ requireUser() → rateLimit() → validasi Zod → authz/ownership check
 
 ### 3.5 AI Layer
 
-[`lib/ai/gemini.ts`](../src/lib/ai/gemini.ts) — semua fungsi **mengembalikan `null` saat gagal** (timeout 30 detik) sehingga pemanggil wajib pakai fallback:
+[`lib/ai/index.ts`](../src/lib/ai/index.ts) — semua fungsi **mengembalikan `null` saat gagal** sehingga pemanggil wajib pakai fallback. Tiap panggilan mencoba provider berurutan: **Ollama kampus** ([`ollama.ts`](../src/lib/ai/ollama.ts), `OLLAMA_MODEL` default `gemma4:latest`) → **Gemini** ([`gemini.ts`](../src/lib/ai/gemini.ts), bila `GEMINI_API_KEY` ada). Prompt & JSON Schema dipakai bersama; hasil menyertakan `provider` yang tercatat di DB (`source` / `evaluated_by`).
 
-| Fungsi | Model | Output |
+| Fungsi | Model (Ollama / Gemini) | Output |
 | --- | --- | --- |
-| `extractReportAttributes` | `GEMINI_MODEL` (default `gemini-flash-latest`) | JSON terstruktur: item_type, warna, merek, material, ciri khusus, keywords, deskripsi ternormalisasi (EN) |
+| `describeItemForForm` | `gemma4` / `GEMINI_MODEL` | Isi otomatis form dari foto (Bahasa Indonesia), tanpa data pribadi & isi barang |
+| `extractReportAttributes` | `gemma4` / `GEMINI_MODEL` | JSON terstruktur: item_type, warna, merek, material, ciri khusus, keywords, deskripsi ternormalisasi (EN) |
 | `analyzeItemImage` | sama | Analisis foto: objek, warna, merek, ciri pembeda |
-| `embedForMatching` | `gemini-embedding-001` | Vektor 768-dim, L2-normalized |
+| `embedForMatching` | `bge-m3` (1024-dim) / `gemini-embedding-001` (768-dim) | Vektor L2-normalized + nama model (`embedding_model`) |
 | `judgeVerificationAnswers` | sama dgn extraction | Verdict per jawaban: `match` / `partial` / `no_match` / `unknown` + catatan |
+
+Timeout Ollama: 75 detik untuk aksi yang ditunggu user (isi otomatis, verifikasi), 150 detik untuk pipeline background — server kampus dipakai bersama dan memuat model (cold start) bisa ~1–2 menit. Mitigasi: `keep_alive` (`OLLAMA_KEEP_ALIVE`, default 30m), warmup model saat form laporan dibuka, dan **circuit breaker** — setelah Ollama gagal, ia dilewati 60 detik agar request berikutnya langsung ke cadangan.
+
+Embedding hanya dibandingkan antar model yang sama; cosine dikalibrasi per model di [`embedding.ts`](../src/lib/ai/embedding.ts).
 
 [`lib/ai/fallback.ts`](../src/lib/ai/fallback.ts) — ekstraksi heuristik + `translateTokens()` (kamus Indonesia→Inggris) agar laporan berbahasa campuran tetap bisa dibandingkan tanpa AI.
 
@@ -239,10 +249,10 @@ erDiagram
 | `profiles` | Data user + role (`user`/`admin`) | Auto-dibuat trigger `handle_new_user` saat register; `phone` privat |
 | `lost_reports` / `found_reports` | Laporan kehilangan / penemuan | `found_reports.private_verification_info` = **rahasia**, tak pernah dikirim ke pengklaim; foto opsional |
 | `report_images` | Path foto di bucket privat | XOR constraint: milik lost **atau** found |
-| `ai_analysis` | Hasil pipeline AI per laporan (1:1) | `extraction`, `image_analysis`, `embedding` (JSONB); `source` gemini/fallback; `status` PENDING/COMPLETED/PARTIAL/FAILED |
+| `ai_analysis` | Hasil pipeline AI per laporan (1:1) | `extraction`, `image_analysis`, `embedding` (JSONB); `embedding_model`; `source` ollama/gemini/fallback; `status` PENDING/COMPLETED/PARTIAL/FAILED |
 | `matches` | Pasangan lost↔found + skor | Unik `(lost, found)`; skor per-komponen + `explanation` JSONB (explainable) |
 | `claims` | Klaim kepemilikan atas match | Unik `(match, claimant)`; `verification_score` |
-| `claim_verifications` | Jawaban & hasil penilaian (1:1 klaim) | `checks` per-aspek; `evaluated_by` gemini/fallback |
+| `claim_verifications` | Jawaban & hasil penilaian (1:1 klaim) | `checks` per-aspek; `evaluated_by` ollama/gemini/fallback |
 | `conversations` / `messages` | Chat aman pasca-approve (1:1 klaim) | Hanya owner & finder |
 | `notifications` | Notifikasi in-app | MATCH_FOUND, CLAIM_*, NEW_MESSAGE, ITEM_RETURNED, … |
 | `report_status_history` | Timeline status laporan | Sumber data komponen status-timeline |
@@ -281,7 +291,7 @@ sequenceDiagram
     participant SA as createLost/FoundReportAction
     participant DB as Supabase (service role)
     participant BG as after() — background
-    participant G as Gemini API
+    participant G as AI (Ollama → Gemini)
 
     U->>SA: submit form (+ foto opsional)
     SA->>SA: requireUser + rateLimit(10/10mnt) + Zod
@@ -292,13 +302,13 @@ sequenceDiagram
 
     Note over BG: processNewReport(type, id)
     BG->>G: extractReportAttributes(form)
-    alt Gemini gagal / tanpa API key
+    alt semua provider AI gagal
         BG->>BG: fallbackExtraction() heuristik
     end
     opt laporan berfoto
         BG->>G: analyzeItemImage(base64)
     end
-    BG->>G: embedForMatching(teks gabungan) → vektor 768-dim
+    BG->>G: embedForMatching(teks gabungan) → vektor + nama model
     BG->>DB: UPDATE ai_analysis (COMPLETED / PARTIAL / FAILED)
     BG->>BG: runMatchingForReport(...)  — lihat 5.3
 ```
@@ -330,7 +340,7 @@ sequenceDiagram
     actor F as Penemu
     participant S as Server Actions (claims)
     participant V as verification.ts
-    participant G as Gemini
+    participant G as AI (Ollama → Gemini)
     participant DB as Supabase
 
     O->>S: submitClaimAction(matchId)
@@ -340,7 +350,7 @@ sequenceDiagram
     O->>S: submitVerificationAction (≤5 jawaban)
     S->>V: evaluateVerificationAnswers()
     V->>G: judgeVerificationAnswers(jawaban vs referensi privat)
-    alt Gemini gagal
+    alt semua provider AI gagal
         V->>V: fallback text-similarity (lintas bahasa)
     end
     V-->>S: checks per-aspek + score 0–100
@@ -453,20 +463,21 @@ Pertahanan berlapis, dari luar ke dalam:
 | 5. Authorization | Ownership check eksplisit per-request sebelum tiap query service-role |
 | 6. RLS deny-all | Jika ada bug di lapisan atas, akses langsung DB dari browser tetap ditolak |
 | 7. Data rahasia | `private_verification_info` tak pernah dikirim ke pengklaim; foto via signed URL 300 detik; `phone` tak pernah tampil ke user lain |
-| 8. Secrets | `GEMINI_API_KEY` & `SUPABASE_SERVICE_ROLE_KEY` hanya di env server — tak pernah masuk bundle browser |
+| 8. Secrets | `GEMINI_API_KEY`, `OLLAMA_API_KEY` & `SUPABASE_SERVICE_ROLE_KEY` hanya di env server; semua panggilan AI dari server — tak pernah masuk bundle browser |
 | 9. Anti-race | Conditional guard di semua transisi status |
 
 ## 8. Graceful Degradation
 
-Aplikasi dirancang tetap berfungsi penuh **tanpa** `GEMINI_API_KEY` (atau saat Gemini error/timeout):
+Aplikasi dirancang tetap berfungsi penuh **tanpa AI** (server Ollama kampus tak terjangkau dan tanpa `GEMINI_API_KEY`, atau keduanya error/timeout):
 
-| Kapabilitas | Dengan Gemini | Tanpa Gemini (fallback) |
+| Kapabilitas | Dengan AI (Ollama/Gemini) | Tanpa AI (fallback) |
 | --- | --- | --- |
 | Ekstraksi atribut | LLM → JSON terstruktur (normalisasi EN) | Heuristik + kamus token ID→EN |
-| Kemiripan deskripsi | Embedding 768-dim + cosine | Token similarity lintas bahasa |
+| Isi otomatis form dari foto | Vision → nama, kategori, warna, ciri | Tidak tersedia — user mengisi manual |
+| Kemiripan deskripsi | Embedding (model sama) + cosine terkalibrasi | Token similarity lintas bahasa |
 | Analisis foto | Vision → objek/warna/ciri | Komponen foto dinonaktifkan, bobot dinormalisasi ulang |
 | Penilaian verifikasi | LLM judge per-aspek + catatan | Text similarity per-aspek |
-| Status tercatat | `source: "gemini"` | `source: "fallback"` + tombol Retry |
+| Status tercatat | `source: "ollama"` / `"gemini"` | `source: "fallback"` + tombol Retry |
 
 Kegagalan parsial (mis. embedding sukses tapi analisis foto gagal) menghasilkan status `PARTIAL` — sistem memakai sinyal yang tersedia dan menormalisasi ulang bobot skor.
 

@@ -1,12 +1,19 @@
 import type { Metadata } from "next";
+import { after, connection } from "next/server";
 import { HandHeart } from "lucide-react";
 import { PageHeader } from "@/components/ui";
 import { ReportForm } from "@/components/report-form";
+import { warmupAi } from "@/lib/ai";
 import { createFoundReportAction } from "@/lib/actions/reports";
 
 export const metadata: Metadata = { title: "Laporkan Barang Ditemukan" };
 
-export default function ReportFoundPage() {
+export default async function ReportFoundPage() {
+  // Muat model AI di server kampus selagi user menyiapkan foto (hindari cold
+  // start). Hanya saat request nyata, bukan saat build/prerender.
+  await connection();
+  after(() => warmupAi());
+
   return (
     <div className="mx-auto max-w-3xl space-y-6 animate-fade-up">
       <PageHeader

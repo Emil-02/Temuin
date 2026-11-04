@@ -1,4 +1,9 @@
-import type { ClaimStatus, MatchLevel, ReportStatus } from "./types";
+import type {
+  AiSource,
+  ClaimStatus,
+  MatchLevel,
+  ReportStatus,
+} from "./types";
 
 export const APP_NAME = "Temuin";
 export const APP_TAGLINE = "Yang Hilang, Bisa Ditemuin.";
@@ -23,6 +28,12 @@ export const CATEGORIES = [
 export function categoryLabel(value: string | null | undefined): string {
   if (!value) return "Lainnya";
   return CATEGORIES.find((c) => c.value === value)?.label ?? value;
+}
+
+export function aiSourceLabel(source: AiSource | null | undefined): string {
+  if (source === "ollama") return "AI Kampus (Ollama)";
+  if (source === "gemini") return "Gemini AI";
+  return "Heuristik lokal";
 }
 
 export const REPORT_STATUS_META: Record<

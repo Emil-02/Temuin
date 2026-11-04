@@ -29,17 +29,20 @@ import {
 import { rateLimit } from "@/lib/rate-limit";
 import type { ActionResult, ReportType } from "@/lib/types";
 
+function validateImageFile(file: File): string | null {
+  if (file.size > MAX_IMAGE_BYTES) return "Ukuran foto maksimal 5MB.";
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type))
+    return "Format foto harus JPG, PNG, atau WebP.";
+  return null;
+}
+
 async function uploadImage(
   file: File,
   type: ReportType,
   reportId: string,
 ): Promise<{ path: string } | { error: string }> {
-  if (file.size > MAX_IMAGE_BYTES) {
-    return { error: "Ukuran foto maksimal 5MB." };
-  }
-  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-    return { error: "Format foto harus JPG, PNG, atau WebP." };
-  }
+  const invalid = validateImageFile(file);
+  if (invalid) return { error: invalid };
   const ext =
     file.type === "image/png"
       ? "png"
@@ -182,8 +185,16 @@ export async function createFoundReportAction(
     found_time: formData.get("found_time") ?? undefined,
     private_verification_info: formData.get("private_verification_info"),
   });
-  if (!parsed.success)
-    return { ok: false, fieldErrors: fieldErrorsOf(parsed.error) };
+  const file = formData.get("image");
+  const photo = file instanceof File && file.size > 0 ? file : null;
+  const photoError = photo
+    ? validateImageFile(photo)
+    : "Foto barang wajib untuk laporan penemuan.";
+  if (!parsed.success || !photo || photoError) {
+    const fieldErrors = parsed.success ? {} : fieldErrorsOf(parsed.error);
+    if (photoError) fieldErrors.image = photoError;
+    return { ok: false, fieldErrors };
+  }
 
   const db = supabaseAdmin();
   const { data: inserted, error } = await db
@@ -203,10 +214,11 @@ export async function createFoundReportAction(
     "Laporan penemuan dibuat",
   );
 
+  // Foto wajib & sudah divalidasi — kegagalan upload storage tetap tidak
+  // menggagalkan laporan (ditandai lewat imgfail).
   let imageWarning: string | undefined;
-  const file = formData.get("image");
-  if (file instanceof File && file.size > 0) {
-    const result = await uploadImage(file, "FOUND", reportId);
+  {
+    const result = await uploadImage(photo, "FOUND", reportId);
     if ("path" in result) {
       await db
         .from("found_reports")
@@ -215,7 +227,7 @@ export async function createFoundReportAction(
       await db.from("report_images").insert({
         found_report_id: reportId,
         storage_path: result.path,
-        mime_type: file.type,
+        mime_type: photo.type,
       });
     } else {
       imageWarning = result.error;

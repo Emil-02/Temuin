@@ -9,6 +9,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { processNewReport } from "@/lib/matching/run";
 import { addStatusHistory } from "@/lib/reports";
+import { aiEnabled } from "@/lib/ai";
 
 export const maxDuration = 300;
 
@@ -245,7 +246,7 @@ async function handleSeed(request: NextRequest) {
             note: "Match utama belum terbentuk — cek GEMINI_API_KEY lalu jalankan seed lagi.",
           },
       total_matches: totalMatches ?? 0,
-      gemini_enabled: Boolean(process.env.GEMINI_API_KEY),
+      ai_enabled: aiEnabled(),
     });
   } catch (err) {
     console.error("[seed] gagal:", err);
