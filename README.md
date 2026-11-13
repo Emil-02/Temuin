@@ -16,6 +16,7 @@ Dibangun untuk **CREATHON 2026** · Tema: _AI dan Data yang Berdampak Sosial_
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com)
 [![Ollama](https://img.shields.io/badge/AI-Gemma_4_via_Ollama_kampus-000000?logo=ollama&logoColor=white)](https://ollama.com)
 [![Gemini](https://img.shields.io/badge/Gemini_AI-cadangan-8E75B2?logo=googlegemini&logoColor=white)](https://ai.google.dev)
+[![spruce](https://gh-spruce.vercel.app/api/badge?repo=Emil-02/Temuin)](https://gh-spruce.vercel.app/u/Emil-02)
 
 </div>
 
